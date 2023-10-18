@@ -86,7 +86,11 @@ DWORD WINAPI ClockThread(LPVOID lpParameter) {
         if (!Terminate) {
             STARTUPINFO si = { sizeof(STARTUPINFO) };
             PROCESS_INFORMATION pi;
-            CreateProcess(NULL, commandLine, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi);
+            if (CreateProcess(NULL, commandLine, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+                // Close the process and thread handles when no longer needed
+                CloseHandle(pi.hProcess);
+                CloseHandle(pi.hThread);
+            }
         }
 
         // Remove the start time from the time list
