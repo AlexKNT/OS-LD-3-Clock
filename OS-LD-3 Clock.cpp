@@ -11,6 +11,7 @@ HWND hMainWnd = 0; // Main window handle to be retained
 HANDLE hClock = 0; // Clock thread handle
 bool ClockPaused = false; // Flag to indicate if the clock is paused
 SYSTEMTIME StartTime = {}; // To store the start time
+PROCESS_INFORMATION pi = {}; // Store the process information
 
 // Message handler prototype
 BOOL CALLBACK MainWndProc(HWND, UINT, WPARAM, LPARAM);
@@ -73,28 +74,10 @@ DWORD WINAPI ClockThread(LPVOID lpParameter) {
         Sleep(10); // Sleep for about 10 milliseconds
     }
 
-    // Check if the start time exists in the time list
-    char startTimestr[9];
-    sprintf_s(startTimestr, sizeof(startTimestr), "%.2d:%.2d:%.2d", StartTime.wHour, StartTime.wMinute, StartTime.wSecond);
-
-    int index = SendMessage(GetDlgItem(hMainWnd, IDC_TIMELIST), LB_FINDSTRINGEXACT, -1, (LPARAM)startTimestr);
-    if (index != LB_ERR) {
-        // Start the process if the start time is found and termination request is not set
-        char commandLine[256];
-        GetDlgItemText(hMainWnd, IDC_COMMANDLINE, commandLine, sizeof(commandLine));
-
-        if (!Terminate) {
-            STARTUPINFO si = { sizeof(STARTUPINFO) };
-            PROCESS_INFORMATION pi;
-            if (CreateProcess(NULL, commandLine, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
-                // Close the process and thread handles when no longer needed
-                CloseHandle(pi.hProcess);
-                CloseHandle(pi.hThread);
-            }
-        }
-
-        // Remove the start time from the time list
-        SendMessage(GetDlgItem(hMainWnd, IDC_TIMELIST), LB_DELETESTRING, index, 0);
+    if (pi.hProcess != NULL) {
+        TerminateProcess(pi.hProcess, 0); // Terminate the child process
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
     }
 
     return 0;
@@ -116,7 +99,10 @@ BOOL CALLBACK MainWndProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam) {
     case WM_COMMAND: // If it's a command message from a control
         switch (LOWORD(wParam)) { // Check the control ID
         case IDOK: // If the OK button was pressed
-            DestroyWindow(hWnd); // Close the window
+            Terminate = true; // Set the termination flag
+            WaitForSingleObject(hClock, INFINITE); // Wait for the clock thread to terminate
+            CloseHandle(hClock);
+            EndDialog(hWnd, 0); // Close the window and exit the application
             return TRUE;
 
         case IDC_PAUSE: // If the Pause button was pressed
@@ -136,6 +122,11 @@ BOOL CALLBACK MainWndProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam) {
         Terminate = true;
         WaitForSingleObject(hClock, INFINITE); // Wait for the clock thread to terminate
         CloseHandle(hClock);
+        if (pi.hProcess != NULL) {
+            TerminateProcess(pi.hProcess, 0); // Terminate the child process
+            CloseHandle(pi.hProcess);
+            CloseHandle(pi.hThread);
+        }
         PostQuitMessage(0); // Terminate the program
         return TRUE;
 
