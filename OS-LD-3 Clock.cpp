@@ -41,11 +41,6 @@ DWORD WINAPI ClockThread(LPVOID lpParameter) {
         SYSTEMTIME time;
         GetLocalTime(&time);
 
-        if (SystemTimeToInt(time) > SystemTimeToInt(StartTime) || Terminate) {
-            break; // Exit the loop if current time is greater or Terminate is true
-        }
-
-
         if (!ClockPaused) {
             // Calculate the elapsed time from the start time
             FILETIME startFileTime, currentTime;
