@@ -6,10 +6,10 @@
 
 #pragma warning(disable : 4996)
 
-bool Terminate = false; // pavedienu pabeigšanas pieprasījuma karodziņš
-HWND hMainWnd = 0; // galvenā loga turis, kas jāsaglabā
-HANDLE hClock = 0; // pulksteņa pavediena turis
-bool ClockPaused = false; // vai pulkstenis ir apstādināts
+bool Terminate = false; // Thread termination request flag
+HWND hMainWnd = 0; // Main window handle to be retained
+HANDLE hClock = 0; // Clock thread handle
+bool ClockPaused = false; // Flag to indicate if the clock is paused
 SYSTEMTIME StartTime = {}; // To store the start time
 
 // Message handler prototype
@@ -70,8 +70,29 @@ DWORD WINAPI ClockThread(LPVOID lpParameter) {
         }
 
         SetDlgItemText(hMainWnd, IDC_CLOCK, timestr);
-        Sleep(250);
+        Sleep(10); // Sleep for about 10 milliseconds
     }
+
+    // Check if the start time exists in the time list
+    char startTimestr[9];
+    sprintf_s(startTimestr, sizeof(startTimestr), "%.2d:%.2d:%.2d", StartTime.wHour, StartTime.wMinute, StartTime.wSecond);
+
+    int index = SendMessage(GetDlgItem(hMainWnd, IDC_TIMELIST), LB_FINDSTRINGEXACT, -1, (LPARAM)startTimestr);
+    if (index != LB_ERR) {
+        // Start the process if the start time is found and termination request is not set
+        char commandLine[256];
+        GetDlgItemText(hMainWnd, IDC_COMMANDLINE, commandLine, sizeof(commandLine));
+
+        if (!Terminate) {
+            STARTUPINFO si = { sizeof(STARTUPINFO) };
+            PROCESS_INFORMATION pi;
+            CreateProcess(NULL, commandLine, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi);
+        }
+
+        // Remove the start time from the time list
+        SendMessage(GetDlgItem(hMainWnd, IDC_TIMELIST), LB_DELETESTRING, index, 0);
+    }
+
     return 0;
 }
 
@@ -109,7 +130,7 @@ BOOL CALLBACK MainWndProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam) {
 
     case WM_DESTROY:
         Terminate = true;
-        Sleep(500);
+        WaitForSingleObject(hClock, INFINITE); // Wait for the clock thread to terminate
         CloseHandle(hClock);
         PostQuitMessage(0); // Terminate the program
         return TRUE;
