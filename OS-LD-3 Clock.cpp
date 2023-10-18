@@ -83,36 +83,80 @@ DWORD WINAPI ClockThread(LPVOID lpParameter) {
     return 0;
 }
 
-// Message handler
+// Define an array to store process handles
+const int MAX_PROCESS_HANDLES = 10; // Adjust the size as needed
+HANDLE processHandles[MAX_PROCESS_HANDLES] = { NULL };
+
 BOOL CALLBACK MainWndProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam) {
-    switch (Msg) { // Check the message identifier
-    case WM_INITDIALOG: // If it's an initialization message
+    switch (Msg) {
+    case WM_INITDIALOG:
         SetTimer(hWnd, 1, 250, NULL);
         hMainWnd = hWnd;
         hClock = CreateThread(NULL, 0, ClockThread, NULL, 0, NULL);
 
-        // Get the initial start time from the IDC_TIME field
         SendMessage(GetDlgItem(hWnd, IDC_TIME), DTM_GETSYSTEMTIME, 0, (LPARAM)&StartTime);
 
         return TRUE;
 
-    case WM_COMMAND: // If it's a command message from a control
-        switch (LOWORD(wParam)) { // Check the control ID
-        case IDOK: // If the OK button was pressed
+    case WM_COMMAND:
+        switch (LOWORD(wParam)) {
+        case IDOK:
             Terminate = true; // Set the termination flag
-            WaitForSingleObject(hClock, INFINITE); // Wait for the clock thread to terminate
+
+            // Terminate the clock thread
+            WaitForSingleObject(hClock, INFINITE);
             CloseHandle(hClock);
+
+            // Terminate all process handles
+            for (int i = 0; i < MAX_PROCESS_HANDLES; i++) {
+                if (processHandles[i] != NULL) {
+                    TerminateProcess(processHandles[i], 0);
+                    CloseHandle(processHandles[i]);
+                }
+            }
+
             EndDialog(hWnd, 0); // Close the window and exit the application
             return TRUE;
 
-        case IDC_PAUSE: // If the Pause button was pressed
+        case IDC_PAUSE:
             if (!ClockPaused) {
-                SuspendThread(hClock); // Pause the clock thread
+                SuspendThread(hClock);
                 ClockPaused = true;
             }
             else {
-                ResumeThread(hClock); // Resume the clock thread
+                ResumeThread(hClock);
                 ClockPaused = false;
+            }
+            return TRUE;
+
+        case IDC_ADD:
+            SYSTEMTIME enteredTime;
+            SendMessage(GetDlgItem(hWnd, IDC_TIME), DTM_GETSYSTEMTIME, 0, (LPARAM)&enteredTime);
+            unsigned __int64 enteredTimeInt = SystemTimeToInt(enteredTime);
+
+            SYSTEMTIME currentTime;
+            GetLocalTime(&currentTime);
+            unsigned __int64 currentTimeInt = SystemTimeToInt(currentTime);
+
+            if (enteredTimeInt <= currentTimeInt) {
+                MessageBox(hWnd, "The entered time is earlier than the current time.", "Alert", MB_ICONWARNING | MB_OK);
+            }
+            else {
+
+
+                char timestr[9];
+                sprintf_s(timestr, sizeof(timestr), "%.2d:%.2d:%.2d",
+                    enteredTime.wHour, enteredTime.wMinute, enteredTime.wSecond);
+
+                // Find an available slot in the array and store the process handle
+                for (int i = 0; i < MAX_PROCESS_HANDLES; i++) {
+                    if (processHandles[i] == NULL) {
+                        processHandles[i] = (HANDLE)i; // Replace this with the actual process handle
+                        break;
+                    }
+                }
+
+                SendDlgItemMessage(hWnd, IDC_TIMELIST, LB_ADDSTRING, 0, (LPARAM)timestr);
             }
             return TRUE;
         }
@@ -120,14 +164,23 @@ BOOL CALLBACK MainWndProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam) {
 
     case WM_DESTROY:
         Terminate = true;
-        WaitForSingleObject(hClock, INFINITE); // Wait for the clock thread to terminate
+        WaitForSingleObject(hClock, INFINITE);
         CloseHandle(hClock);
+
+        // Terminate all process handles
+        for (int i = 0; i < MAX_PROCESS_HANDLES; i++) {
+            if (processHandles[i] != NULL) {
+                TerminateProcess(processHandles[i], 0);
+                CloseHandle(processHandles[i]);
+            }
+        }
+
         if (pi.hProcess != NULL) {
-            TerminateProcess(pi.hProcess, 0); // Terminate the child process
+            TerminateProcess(pi.hProcess, 0);
             CloseHandle(pi.hProcess);
             CloseHandle(pi.hThread);
         }
-        PostQuitMessage(0); // Terminate the program
+        PostQuitMessage(0);
         return TRUE;
 
     case WM_TIMER:
