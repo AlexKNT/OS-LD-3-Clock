@@ -154,6 +154,28 @@ BOOL CALLBACK MainWndProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam) {
 
         return FALSE;
 
+    case WM_CTLCOLORSTATIC:
+{
+    HDC hdcStatic = (HDC)wParam;
+    HWND hwndStatic = (HWND)lParam;
+
+    if (GetDlgItem(hWnd, IDC_CLOCK) == hwndStatic)
+    {
+        if (ClockPaused)
+        {
+            SetTextColor(hdcStatic, RGB(255, 0, 0)); // Red
+        }
+        else
+        {
+            SetTextColor(hdcStatic, RGB(0, 128, 0)); // Green
+        }
+
+        return (INT_PTR)GetStockObject(NULL_BRUSH);
+    }
+}
+break;
+
+
     case WM_DESTROY:
         Terminate = true;
         Sleep(500);
