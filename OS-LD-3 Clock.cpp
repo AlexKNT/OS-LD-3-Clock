@@ -114,9 +114,22 @@ BOOL CALLBACK MainWndProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam) {
 
         case IDC_ADD:
         {
-            int itemIndex = SendMessage(GetDlgItem(hMainWnd, IDC_TIMELIST), LB_GETCOUNT, 0, 0);
-            SendMessage(GetDlgItem(hMainWnd, IDC_TIMELIST), LB_ADDSTRING, 0, 0);
-            CreateThread(NULL, 0, ScheduleThread, NULL, 0, NULL);
+            SYSTEMTIME TimeFromIDC_TIME;
+            DateTime_GetSystemtime(GetDlgItem(hMainWnd, IDC_TIME), &TimeFromIDC_TIME);
+            SYSTEMTIME CurrentTime;
+            GetLocalTime(&CurrentTime);
+
+            if (SystemTimeToInt(TimeFromIDC_TIME) <= SystemTimeToInt(CurrentTime)) {
+                MessageBox(hMainWnd, "Selected time is in the past.", "Error", MB_OK | MB_ICONERROR);
+            }
+            else {
+                char sTimeFromIDC_TIME[20];
+                sprintf_s(sTimeFromIDC_TIME, "%.2d:%.2d:%.2d", TimeFromIDC_TIME.wHour, TimeFromIDC_TIME.wMinute, TimeFromIDC_TIME.wSecond);
+
+                int itemIndex = SendMessage(GetDlgItem(hMainWnd, IDC_TIMELIST), LB_ADDSTRING, 0, (LPARAM)sTimeFromIDC_TIME);
+
+                CreateThread(NULL, 0, ScheduleThread, NULL, 0, NULL);
+            }
         }
         return TRUE;
         }
