@@ -4,6 +4,7 @@
 #include "Resource.h"
 #include <commctrl.h> // Include CommCtrl.h for DateTime_GetSystemtime
 #include <processthreadsapi.h>
+#include <winuser.h> 
 
 
 #pragma warning(disable : 4996)
@@ -49,18 +50,57 @@ unsigned __int64 SystemTimeToInt(SYSTEMTIME Time) {
     fti.LowPart = ft.dwLowDateTime;
     return fti.QuadPart;
 }
+DWORD WINAPI ScheduleThread(LPVOID lpParameter) {
+    SYSTEMTIME StartTime;
+    if (DateTime_GetSystemtime(GetDlgItem(hMainWnd, IDC_TIME), &StartTime)) {
+        while (true) {
+            SYSTEMTIME CurrentTime;
+            GetLocalTime(&CurrentTime);
+
+            if (SystemTimeToInt(CurrentTime) > SystemTimeToInt(StartTime) || Terminate) {
+                break;
+            }
+
+            Sleep(10);
+        }
+
+        char sStartTime[20];
+        sprintf_s(sStartTime, "%.2d:%.2d:%.2d", StartTime.wHour, StartTime.wMinute, StartTime.wSecond);
+
+        int itemIndex = SendMessage(GetDlgItem(hMainWnd, IDC_TIMELIST), LB_FINDSTRINGEXACT, -1, (LPARAM)sStartTime);
+
+        if (itemIndex != LB_ERR && !Terminate) {
+            char commandLine[512];
+            GetDlgItemTextA(hMainWnd, IDC_COMMANDLINE, commandLine, sizeof(commandLine));
+
+            STARTUPINFO si = { sizeof(STARTUPINFO) };
+            PROCESS_INFORMATION pi;
+
+            if (CreateProcess(NULL, commandLine, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+                CloseHandle(pi.hProcess);
+                CloseHandle(pi.hThread);
+            }
+
+            SendMessage(GetDlgItem(hMainWnd, IDC_TIMELIST), LB_DELETESTRING, itemIndex, 0);
+        }
+    }
+
+    return 0;
+}
+
 BOOL CALLBACK MainWndProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam) {
-    switch (Msg) { // pārbaudīt ziņojuma identifikatoru
-    case WM_INITDIALOG: // ja tas ir inicializācijas paziņojums
-        // izpildīt inicializācijas darbības
+    switch (Msg) {
+    case WM_INITDIALOG:
         hMainWnd = hWnd;
         hClock = CreateThread(NULL, 0, ClockThread, NULL, 0, NULL);
         return TRUE;
+
     case WM_COMMAND:
         switch (LOWORD(wParam)) {
         case IDOK:
             DestroyWindow(hWnd);
             return TRUE;
+
         case IDC_PAUSE:
             if (ClockPaused) {
                 ResumeThread(hClock);
@@ -71,15 +111,22 @@ BOOL CALLBACK MainWndProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam) {
                 ClockPaused = true;
             }
             return TRUE;
+
+        case IDC_ADD:
+        {
+            int itemIndex = SendMessage(GetDlgItem(hMainWnd, IDC_TIMELIST), LB_GETCOUNT, 0, 0);
+            SendMessage(GetDlgItem(hMainWnd, IDC_TIMELIST), LB_ADDSTRING, 0, 0);
+            CreateThread(NULL, 0, ScheduleThread, NULL, 0, NULL);
+        }
+        return TRUE;
         }
         return FALSE;
 
-    case WM_DESTROY: // ja tas ir pabeigšanas pieprasījums
+    case WM_DESTROY:
         Terminate = true;
         Sleep(500);
         CloseHandle(hClock);
-
-        PostQuitMessage(0); // pabeigt programmu
+        PostQuitMessage(0);
         return TRUE;
     }
     return FALSE;
