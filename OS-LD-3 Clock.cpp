@@ -5,9 +5,11 @@
 #include <commctrl.h> // Include CommCtrl.h for DateTime_GetSystemtime
 #include <processthreadsapi.h>
 #include <winuser.h> 
-
+#include <wingdi.h>
 
 #pragma warning(disable : 4996)
+
+HFONT hCustomFont = NULL;
 
 bool Terminate = false; // Thread termination request flag
 HWND hMainWnd = 0; // Main window handle to be retained
@@ -92,6 +94,14 @@ BOOL CALLBACK MainWndProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam) {
     switch (Msg) {
     case WM_INITDIALOG:
         hMainWnd = hWnd;
+
+        hCustomFont = CreateFont(20, 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE, ANSI_CHARSET,
+            OUT_TT_ONLY_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, NULL);
+
+        // Set the font for IDC_CLOCK
+        SendMessage(GetDlgItem(hWnd, IDC_CLOCK), WM_SETFONT, (WPARAM)hCustomFont, TRUE);
+
+
         hClock = CreateThread(NULL, 0, ClockThread, NULL, 0, NULL);
         return TRUE;
 
@@ -131,14 +141,29 @@ BOOL CALLBACK MainWndProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam) {
                 CreateThread(NULL, 0, ScheduleThread, NULL, 0, NULL);
             }
         }
+        case IDC_DELETE:
+        {
+            int selectedRow = SendMessage(GetDlgItem(hMainWnd, IDC_TIMELIST), LB_GETCURSEL, 0, 0);
+            if (selectedRow != LB_ERR) {
+                SendMessage(GetDlgItem(hMainWnd, IDC_TIMELIST), LB_DELETESTRING, selectedRow, 0);
+            }
+        }
+
         return TRUE;
         }
+
         return FALSE;
 
     case WM_DESTROY:
         Terminate = true;
         Sleep(500);
         CloseHandle(hClock);
+
+        if (hCustomFont != NULL) {
+            DeleteObject(hCustomFont);
+            hCustomFont = NULL;
+        }
+
         PostQuitMessage(0);
         return TRUE;
     }
