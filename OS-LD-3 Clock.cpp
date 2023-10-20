@@ -43,6 +43,27 @@ DWORD WINAPI ClockThread(LPVOID lpParameter) {
     return 0;
 }
 
+bool BrowseForFileName(HWND hWnd, char* fileName) {
+    OPENFILENAME ofn = { 0 };
+    char szFileName[MAX_PATH] = { 0 };
+
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = hWnd;
+    ofn.lpstrFilter = "Executable Files (*.exe)\0*.exe\0All Files (*.*)\0*.*\0";
+    ofn.lpstrFile = szFileName;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+    ofn.lpstrDefExt = "exe";
+
+    if (GetOpenFileNameA(&ofn)) {
+        // Copy the selected file name to the output parameter 'fileName'
+        strcpy(fileName, szFileName);
+        return true;
+    }
+
+    return false;
+}
+
 
 unsigned __int64 SystemTimeToInt(SYSTEMTIME Time) {
     FILETIME ft;
@@ -52,6 +73,7 @@ unsigned __int64 SystemTimeToInt(SYSTEMTIME Time) {
     fti.LowPart = ft.dwLowDateTime;
     return fti.QuadPart;
 }
+
 DWORD WINAPI ScheduleThread(LPVOID lpParameter) {
     SYSTEMTIME StartTime;
     if (DateTime_GetSystemtime(GetDlgItem(hMainWnd, IDC_TIME), &StartTime)) {
@@ -110,7 +132,15 @@ BOOL CALLBACK MainWndProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam) {
         case IDOK:
             DestroyWindow(hWnd);
             return TRUE;
-
+        
+        case IDC_BROWSE:
+            char fileName[MAX_PATH];
+            if (BrowseForFileName(hWnd, fileName)) {
+                // Update the command line field with the selected file name
+                SetDlgItemTextA(hWnd, IDC_COMMANDLINE, fileName);
+            }
+            return TRUE;
+       
         case IDC_PAUSE:
             if (ClockPaused) {
                 ResumeThread(hClock);
@@ -151,6 +181,7 @@ BOOL CALLBACK MainWndProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam) {
 
         return TRUE;
         }
+
 
         return FALSE;
 
