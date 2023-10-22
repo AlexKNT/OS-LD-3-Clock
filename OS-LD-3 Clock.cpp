@@ -6,6 +6,8 @@
 #include <processthreadsapi.h>
 #include <winuser.h> 
 #include <wingdi.h>
+#include <string>
+#include <vector>
 
 #pragma warning(disable : 4996)
 
@@ -15,6 +17,13 @@ bool Terminate = false; // Thread termination request flag
 HWND hMainWnd = 0; // Main window handle to be retained
 HANDLE hClock = 0; // Clock thread handle
 bool ClockPaused = false; // Flag to indicate if the clock is paused
+
+struct ScheduledTask {
+    SYSTEMTIME scheduledTime;
+    std::string commandLine;
+};
+
+std::vector<ScheduledTask> scheduledTasks; // List of scheduled tasks
 
 // Message handler prototype
 BOOL CALLBACK MainWndProc(HWND, UINT, WPARAM, LPARAM);
@@ -75,47 +84,38 @@ unsigned __int64 SystemTimeToInt(SYSTEMTIME Time) {
 }
 
 DWORD WINAPI ScheduleThread(LPVOID lpParameter) {
-    SYSTEMTIME ScheduledTime;
+    int taskIndex = (int)lpParameter;
+
+    SYSTEMTIME ScheduledTime = scheduledTasks[taskIndex].scheduledTime;
     char sScheduledTime[20];
+    sprintf_s(sScheduledTime, "%.2d:%.2d:%.2d", ScheduledTime.wHour, ScheduledTime.wMinute, ScheduledTime.wSecond);
 
-    if (DateTime_GetSystemtime(GetDlgItem(hMainWnd, IDC_TIME), &ScheduledTime)) {
-        sprintf_s(sScheduledTime, "%.2d:%.2d:%.2d", ScheduledTime.wHour, ScheduledTime.wMinute, ScheduledTime.wSecond);
-
+    while (!Terminate) {
         // Get the current time
         SYSTEMTIME CurrentTime;
         GetLocalTime(&CurrentTime);
 
-        // Calculate the time difference in milliseconds
-        unsigned __int64 scheduledTime = SystemTimeToInt(ScheduledTime);
-        unsigned __int64 currentTime = SystemTimeToInt(CurrentTime);
-        unsigned __int64 timeDifference = scheduledTime - currentTime;
+        // Check if the current time matches the scheduled time
+        if (CurrentTime.wHour == ScheduledTime.wHour &&
+            CurrentTime.wMinute == ScheduledTime.wMinute &&
+            CurrentTime.wSecond == ScheduledTime.wSecond) {
 
-        if (timeDifference > 0) {
-            // Sleep until the scheduled time is reached
-            Sleep((DWORD)timeDifference);
+            // Execute the command line
+            STARTUPINFO si = { sizeof(STARTUPINFO) };
+            PROCESS_INFORMATION pi;
 
-            // Check if the Terminate flag is set
-            if (Terminate) {
-                return 0;
+            if (CreateProcess(NULL, (LPSTR)scheduledTasks[taskIndex].commandLine.c_str(), NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+                CloseHandle(pi.hProcess);
+                CloseHandle(pi.hThread);
             }
 
-            // Check if the scheduled time still matches the item in the list
-            int itemIndex = SendMessage(GetDlgItem(hMainWnd, IDC_TIMELIST), LB_FINDSTRINGEXACT, -1, (LPARAM)sScheduledTime);
-            if (itemIndex != LB_ERR) {
-                char commandLine[512];
-                GetDlgItemTextA(hMainWnd, IDC_COMMANDLINE, commandLine, sizeof(commandLine));
+            // Remove the item from the list
+            SendMessage(GetDlgItem(hMainWnd, IDC_TIMELIST), LB_DELETESTRING, static_cast<UINT>(taskIndex), 0);
 
-                STARTUPINFO si = { sizeof(STARTUPINFO) };
-                PROCESS_INFORMATION pi;
-
-                if (CreateProcess(NULL, commandLine, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
-                    CloseHandle(pi.hProcess);
-                    CloseHandle(pi.hThread);
-                }
-
-                SendMessage(GetDlgItem(hMainWnd, IDC_TIMELIST), LB_DELETESTRING, static_cast<UINT>(itemIndex), 0);
-            }
+            break; // Exit the thread after executing the task
         }
+
+        Sleep(1000); // Sleep for 1 second before checking again
     }
 
     return 0;
@@ -176,11 +176,21 @@ BOOL CALLBACK MainWndProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam) {
                 char sTimeFromIDC_TIME[20];
                 sprintf_s(sTimeFromIDC_TIME, "%.2d:%.2d:%.2d", TimeFromIDC_TIME.wHour, TimeFromIDC_TIME.wMinute, TimeFromIDC_TIME.wSecond);
 
+                // Store the scheduled time and command line in a ScheduledTask structure
+                ScheduledTask task;
+                task.scheduledTime = TimeFromIDC_TIME;
+                char commandLine[512];
+                GetDlgItemTextA(hMainWnd, IDC_COMMANDLINE, commandLine, sizeof(commandLine));
+                task.commandLine = commandLine;
+
+                scheduledTasks.push_back(task); // Add the task to the list
+
                 int itemIndex = SendMessage(GetDlgItem(hMainWnd, IDC_TIMELIST), LB_ADDSTRING, 0, (LPARAM)sTimeFromIDC_TIME);
 
-                CreateThread(NULL, 0, ScheduleThread, NULL, 0, NULL);
+                // Create a scheduling thread for the task
+                CreateThread(NULL, 0, ScheduleThread, (LPVOID)(scheduledTasks.size() - 1), 0, NULL);
             }
-            break; // Add this break statement
+            break;
         }
 
         case IDC_DELETE:
