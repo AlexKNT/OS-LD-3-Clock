@@ -75,42 +75,52 @@ unsigned __int64 SystemTimeToInt(SYSTEMTIME Time) {
 }
 
 DWORD WINAPI ScheduleThread(LPVOID lpParameter) {
-    SYSTEMTIME StartTime;
-    if (DateTime_GetSystemtime(GetDlgItem(hMainWnd, IDC_TIME), &StartTime)) {
-        while (true) {
-            SYSTEMTIME CurrentTime;
-            GetLocalTime(&CurrentTime);
+    SYSTEMTIME ScheduledTime;
+    char sScheduledTime[20];
 
-            if (SystemTimeToInt(CurrentTime) > SystemTimeToInt(StartTime) || Terminate) {
-                break;
+    if (DateTime_GetSystemtime(GetDlgItem(hMainWnd, IDC_TIME), &ScheduledTime)) {
+        sprintf_s(sScheduledTime, "%.2d:%.2d:%.2d", ScheduledTime.wHour, ScheduledTime.wMinute, ScheduledTime.wSecond);
+
+        // Get the current time
+        SYSTEMTIME CurrentTime;
+        GetLocalTime(&CurrentTime);
+
+        // Calculate the time difference in milliseconds
+        unsigned __int64 scheduledTime = SystemTimeToInt(ScheduledTime);
+        unsigned __int64 currentTime = SystemTimeToInt(CurrentTime);
+        unsigned __int64 timeDifference = scheduledTime - currentTime;
+
+        if (timeDifference > 0) {
+            // Sleep until the scheduled time is reached
+            Sleep((DWORD)timeDifference);
+
+            // Check if the Terminate flag is set
+            if (Terminate) {
+                return 0;
             }
 
-            Sleep(10);
-        }
+            // Check if the scheduled time still matches the item in the list
+            int itemIndex = SendMessage(GetDlgItem(hMainWnd, IDC_TIMELIST), LB_FINDSTRINGEXACT, -1, (LPARAM)sScheduledTime);
+            if (itemIndex != LB_ERR) {
+                char commandLine[512];
+                GetDlgItemTextA(hMainWnd, IDC_COMMANDLINE, commandLine, sizeof(commandLine));
 
-        char sStartTime[20];
-        sprintf_s(sStartTime, "%.2d:%.2d:%.2d", StartTime.wHour, StartTime.wMinute, StartTime.wSecond);
+                STARTUPINFO si = { sizeof(STARTUPINFO) };
+                PROCESS_INFORMATION pi;
 
-        int itemIndex = SendMessage(GetDlgItem(hMainWnd, IDC_TIMELIST), LB_FINDSTRINGEXACT, -1, (LPARAM)sStartTime);
+                if (CreateProcess(NULL, commandLine, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+                    CloseHandle(pi.hProcess);
+                    CloseHandle(pi.hThread);
+                }
 
-        if (itemIndex != LB_ERR && !Terminate) {
-            char commandLine[512];
-            GetDlgItemTextA(hMainWnd, IDC_COMMANDLINE, commandLine, sizeof(commandLine));
-
-            STARTUPINFO si = { sizeof(STARTUPINFO) };
-            PROCESS_INFORMATION pi;
-
-            if (CreateProcess(NULL, commandLine, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
-                CloseHandle(pi.hProcess);
-                CloseHandle(pi.hThread);
+                SendMessage(GetDlgItem(hMainWnd, IDC_TIMELIST), LB_DELETESTRING, static_cast<UINT>(itemIndex), 0);
             }
-
-            SendMessage(GetDlgItem(hMainWnd, IDC_TIMELIST), LB_DELETESTRING, itemIndex, 0);
         }
     }
 
     return 0;
 }
+
 
 BOOL CALLBACK MainWndProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam) {
     switch (Msg) {
@@ -170,7 +180,9 @@ BOOL CALLBACK MainWndProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam) {
 
                 CreateThread(NULL, 0, ScheduleThread, NULL, 0, NULL);
             }
+            break; // Add this break statement
         }
+
         case IDC_DELETE:
         {
             int selectedRow = SendMessage(GetDlgItem(hMainWnd, IDC_TIMELIST), LB_GETCURSEL, 0, 0);
@@ -185,26 +197,28 @@ BOOL CALLBACK MainWndProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam) {
 
         return FALSE;
 
+
+
     case WM_CTLCOLORSTATIC:
-{
-    HDC hdcStatic = (HDC)wParam;
-    HWND hwndStatic = (HWND)lParam;
-
-    if (GetDlgItem(hWnd, IDC_CLOCK) == hwndStatic)
     {
-        if (ClockPaused)
-        {
-            SetTextColor(hdcStatic, RGB(255, 0, 0)); // Red
-        }
-        else
-        {
-            SetTextColor(hdcStatic, RGB(0, 128, 0)); // Green
-        }
+        HDC hdcStatic = (HDC)wParam;
+        HWND hwndStatic = (HWND)lParam;
 
-        return (INT_PTR)GetStockObject(NULL_BRUSH);
+        if (GetDlgItem(hWnd, IDC_CLOCK) == hwndStatic)
+        {
+            if (ClockPaused)
+            {
+                SetTextColor(hdcStatic, RGB(255, 0, 0)); // Red
+            }
+            else
+            {
+                SetTextColor(hdcStatic, RGB(0, 128, 0)); // Green
+            }
+
+            return (INT_PTR)GetStockObject(NULL_BRUSH);
+        }
     }
-}
-break;
+    break;
 
 
     case WM_DESTROY:
