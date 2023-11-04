@@ -95,18 +95,21 @@ DWORD WINAPI ScheduleThread(LPVOID lpParameter) {
         SYSTEMTIME CurrentTime;
         GetLocalTime(&CurrentTime);
 
-        // Check if the current time matches the scheduled time
+        // Check if the current time matches the scheduled time and if the task is still in IDC_TIMELIST
         if (CurrentTime.wHour == ScheduledTime.wHour &&
             CurrentTime.wMinute == ScheduledTime.wMinute &&
             CurrentTime.wSecond == ScheduledTime.wSecond) {
+            int itemIndex = SendMessage(GetDlgItem(hMainWnd, IDC_TIMELIST), LB_FINDSTRINGEXACT, -1, (LPARAM)sScheduledTime);
 
-            // Execute the command line
-            STARTUPINFO si = { sizeof(STARTUPINFO) };
-            PROCESS_INFORMATION pi;
+            if (itemIndex != LB_ERR) {
+                // Execute the command line
+                STARTUPINFO si = { sizeof(STARTUPINFO) };
+                PROCESS_INFORMATION pi;
 
-            if (CreateProcess(NULL, (LPSTR)scheduledTasks[taskIndex].commandLine.c_str(), NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
-                CloseHandle(pi.hProcess);
-                CloseHandle(pi.hThread);
+                if (CreateProcess(NULL, (LPSTR)scheduledTasks[taskIndex].commandLine.c_str(), NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+                    CloseHandle(pi.hProcess);
+                    CloseHandle(pi.hThread);
+                }
             }
 
             // Remove the item from the list
@@ -120,6 +123,7 @@ DWORD WINAPI ScheduleThread(LPVOID lpParameter) {
 
     return 0;
 }
+
 
 
 BOOL CALLBACK MainWndProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam) {
